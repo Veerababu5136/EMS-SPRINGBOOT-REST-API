@@ -5,6 +5,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -81,27 +82,30 @@ public class EventsController {
                 return ResponseEntity.badRequest().body(Map.of("status", HttpStatus.BAD_REQUEST.value(), "message", "Image file is required"));
             }
 
-            // Save the file (assuming you're saving it to the 'uploads' directory)
-            String fileName = System.currentTimeMillis() + "_" + file.getOriginalFilename();
-            
-            // Define the directory path correctly
-            File directory = new File("src/uploads");
+            // Define the upload directory (not inside `src/`)
+            String uploadDir = "uploads/";
+            File directory = new File(uploadDir);
             if (!directory.exists()) {
-                directory.mkdirs();  // Ensure the 'uploads' directory exists
+                directory.mkdirs(); // Ensure the `uploads` directory exists
             }
 
-            // Correct the file path
-            Path filePath = Paths.get(directory.getAbsolutePath(), fileName);
-            Files.write(filePath, file.getBytes());
+            // Generate a unique filename
+            String fileName = System.currentTimeMillis() + "_" + file.getOriginalFilename();
+            Path filePath = Paths.get(uploadDir, fileName);
 
-            // Set the image URL to be stored in the database
+            // Save the file
+            Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+
+            // Store only the filename in the database
             events.setImageName(fileName);
 
             // Insert event into the database
             boolean status = eventService.insertEvent(events);
             if (status) {
+                // Return public image URL
+                String imageUrl = "/uploads/" + fileName;
                 return ResponseEntity.status(HttpStatus.CREATED)
-                        .body(Map.of("status", HttpStatus.CREATED.value(), "message", "Event Added Successfully", "image_url", "/uploads/" + fileName));
+                        .body(Map.of("status", HttpStatus.CREATED.value(), "message", "Event Added Successfully", "image_url", imageUrl));
             }
 
             return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("status", HttpStatus.CONFLICT.value(), "message", "Error in Creating Event"));
@@ -110,6 +114,7 @@ public class EventsController {
                     .body(Map.of("status", HttpStatus.INTERNAL_SERVER_ERROR.value(), "message", "File upload failed: " + e.getMessage()));
         }
     }
+
 
 
     // Update Event (Admin Only)
