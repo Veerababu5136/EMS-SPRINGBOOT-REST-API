@@ -85,7 +85,7 @@ public class EventsController {
             String fileName = System.currentTimeMillis() + "_" + file.getOriginalFilename();
             
             // Define the directory path correctly
-            File directory = new File("src/main/resources/static/uploads");
+            File directory = new File("src/uploads");
             if (!directory.exists()) {
                 directory.mkdirs();  // Ensure the 'uploads' directory exists
             }
