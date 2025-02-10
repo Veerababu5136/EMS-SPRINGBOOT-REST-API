@@ -53,32 +53,51 @@ public class EventsController {
         return ResponseEntity.ok(Map.of("status", HttpStatus.OK.value(), "message", "Event Found", "event", event.get()));
     }
 
-    @PostMapping("/events")
+    @PostMapping(value = "/events", consumes = "multipart/form-data")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<?> createEvent(@RequestBody Events events, @RequestParam("file") MultipartFile imageFile) {
+    public ResponseEntity<?> createEvent(
+            @RequestParam("eventName") String eventName,
+            @RequestParam("startDate") String startDate,
+            @RequestParam("endDate") String endDate,
+            @RequestParam("description") String description,
+            @RequestParam("file") MultipartFile file) {
+
         try {
+            // Create the Events object with the form data
+            Events events = new Events();
+            events.setEventName(eventName);
+            events.setStartDate(startDate);
+            events.setEndDate(endDate);
+            events.setDescription(description);
+
             // Validate event data
             String validationError = validateEvent(events);
             if (validationError != null) {
                 return ResponseEntity.badRequest().body(Map.of("status", HttpStatus.BAD_REQUEST.value(), "message", validationError));
             }
 
-            String uploadDir = "src/main/resources/static/images/"; // Adjust this path based on your project structure
-            String fileName = imageFile.getOriginalFilename();
-            Path filePath = Paths.get(uploadDir + fileName);
-            
-            // Create directories if they don’t exist
-            Files.createDirectories(filePath.getParent());
-            
-            // Save the file to the file system
-            Files.write(filePath, imageFile.getBytes());
-            
-            // Set the image URL to be stored in the database (relative to your resources/static/images)
+            // Handle file upload
+            if (file.isEmpty()) {
+                return ResponseEntity.badRequest().body(Map.of("status", HttpStatus.BAD_REQUEST.value(), "message", "Image file is required"));
+            }
 
+            // Save the file (assuming you're saving it to the 'uploads' directory)
+            String fileName = System.currentTimeMillis() + "_" + file.getOriginalFilename();
             
-            events.setImageName("/images/" + fileName);
-            
-            // Insert event into database
+            // Define the directory path correctly
+            File directory = new File("src/main/resources/static/uploads");
+            if (!directory.exists()) {
+                directory.mkdirs();  // Ensure the 'uploads' directory exists
+            }
+
+            // Correct the file path
+            Path filePath = Paths.get(directory.getAbsolutePath(), fileName);
+            Files.write(filePath, file.getBytes());
+
+            // Set the image URL to be stored in the database
+            events.setImageName(fileName);
+
+            // Insert event into the database
             boolean status = eventService.insertEvent(events);
             if (status) {
                 return ResponseEntity.status(HttpStatus.CREATED)
