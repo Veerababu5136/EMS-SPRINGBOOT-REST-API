@@ -130,6 +130,7 @@ public class SecurityConfig
 	        .csrf(AbstractHttpConfigurer::disable) // Disable CSRF for APIs
 	        .cors(Customizer.withDefaults()) // Allow Cross-Origin requests
 	        .authorizeHttpRequests(authz -> authz
+	        		.requestMatchers("/uploads/**", "/css/**", "/js/**", "/images/**").permitAll() // Allow public access
 	        	    .requestMatchers("/user/auth/**").permitAll()         // Public endpoints for login/register
 	        	    .requestMatchers("/admin/**").hasRole("ADMIN")        // Only ADMIN can access /admin/**
 	        	    .requestMatchers("/user/**").hasAnyRole("USER", "ADMIN") // USER and ADMIN can access /user/**
