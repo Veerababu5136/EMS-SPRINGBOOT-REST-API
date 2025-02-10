@@ -1,23 +1,22 @@
 package com.restapi.eventManagementSystem.controllers;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
-import org.springframework.web.bind.annotation.DeleteMapping;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.PutMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestMapping;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import com.restapi.eventManagementSystem.entites.EventRegister;
 import com.restapi.eventManagementSystem.entites.Events;
@@ -26,324 +25,164 @@ import com.restapi.eventManagementSystem.services.EventService;
 @RestController
 @RequestMapping("/api")
 public class EventsController {
-	
-	@Autowired
-	private EventService eventService;
-	
-	
-	
-	@GetMapping("/events")
-	public ResponseEntity<?> getAllEvents() {
-	    List<Events> events = eventService.getEvents();
 
-	    if (events.isEmpty()) {
-	        return new ResponseEntity<>(
-	            Map.of(
-	                "status", HttpStatus.NO_CONTENT.value(),
-	                "message", "No Events Available",
-	                "events", events
-	            ),
-	            HttpStatus.NO_CONTENT
-	        );
-	    }
+    @Autowired
+    private EventService eventService;
 
-	    return new ResponseEntity<>(
-	        Map.of(
-	            "status", HttpStatus.OK.value(),
-	            "message", "Events Retrieved Successfully",
-	            "events", events
-	        ),
-	        HttpStatus.OK
-	    );
-	}
+    @Value("${upload.dir}")
+    private String uploadDir;
+    // Get All Events
+    @GetMapping("/events")
+    public ResponseEntity<?> getAllEvents() {
+        List<Events> events = eventService.getEvents();
+        if (events.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NO_CONTENT)
+                    .body(Map.of("status", HttpStatus.NO_CONTENT.value(), "message", "No Events Available"));
+        }
+        return ResponseEntity.ok(Map.of("status", HttpStatus.OK.value(), "message", "Events Retrieved Successfully", "events", events));
+    }
 
-	
-	
-	
-	@GetMapping("/events/{id}")
-	public ResponseEntity<?> getEventById(@PathVariable long id)
-	{
-		Optional<Events> event=eventService.getEventById(id);
-		
-		System.out.println(event);
-		
-		if(event.isEmpty())
-		{
-			 return new ResponseEntity(
-			        Map.of(
-			                "status", HttpStatus.NOT_FOUND.value(),
-			                "message", "Event Not Found"
-			            ),
-			            HttpStatus.NOT_FOUND
-			        );		
-			}
-		
-		 return new ResponseEntity<>(
-			        Map.of(
-			            "status", HttpStatus.OK.value(),
-			            "message", "Event Found",
-			            "event", event.get()
-			        ),
-			        HttpStatus.OK
-			    );
-		
-	}
-	
-	
-	@PostMapping("/events")
-	@PreAuthorize("hasRole('ADMIN')")
-	public ResponseEntity<?> createEvent(@RequestBody Events events) {
-	    try {
-	        // 1. Validate data using helper method
-	        String validationError = validateEvent(events);
-	        if (validationError != null) {
-	            return new ResponseEntity<>(
-	                Map.of(
-	                    "status", HttpStatus.BAD_REQUEST.value(),
-	                    "message", validationError
-	                ),
-	                HttpStatus.BAD_REQUEST
-	            );
-	        }
+    // Get Event by ID
+    @GetMapping("/events/{id}")
+    public ResponseEntity<?> getEventById(@PathVariable long id) {
+        Optional<Events> event = eventService.getEventById(id);
+        if (event.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .body(Map.of("status", HttpStatus.NOT_FOUND.value(), "message", "Event Not Found"));
+        }
+        return ResponseEntity.ok(Map.of("status", HttpStatus.OK.value(), "message", "Event Found", "event", event.get()));
+    }
 
-	        // 2. Adding the event
-	        boolean status = eventService.insertEvent(events);
+    @PostMapping("/events")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> createEvent(@RequestBody Events events, @RequestParam("file") MultipartFile imageFile) {
+        try {
+            // Validate event data
+            String validationError = validateEvent(events);
+            if (validationError != null) {
+                return ResponseEntity.badRequest().body(Map.of("status", HttpStatus.BAD_REQUEST.value(), "message", validationError));
+            }
 
-	        if (status) {
-	            return new ResponseEntity<>(
-	                Map.of(
-	                    "status", HttpStatus.CREATED.value(),
-	                    "message", "Event Added Successfully"
-	                ),
-	                HttpStatus.CREATED
-	            );
-	        }
+            String uploadDir = "src/main/resources/static/images/"; // Adjust this path based on your project structure
+            String fileName = imageFile.getOriginalFilename();
+            Path filePath = Paths.get(uploadDir + fileName);
+            
+            // Create directories if they don’t exist
+            Files.createDirectories(filePath.getParent());
+            
+            // Save the file to the file system
+            Files.write(filePath, imageFile.getBytes());
+            
+            // Set the image URL to be stored in the database (relative to your resources/static/images)
 
-	        // 3. Handling insertion failure
-	        return new ResponseEntity<>(
-	            Map.of(
-	                "status", HttpStatus.CONFLICT.value(),
-	                "message", "Error in Creating Event. Check Data"
-	            ),
-	            HttpStatus.CONFLICT
-	        );
+            
+            events.setImageName("/images/" + fileName);
+            
+            // Insert event into database
+            boolean status = eventService.insertEvent(events);
+            if (status) {
+                return ResponseEntity.status(HttpStatus.CREATED)
+                        .body(Map.of("status", HttpStatus.CREATED.value(), "message", "Event Added Successfully", "image_url", "/uploads/" + fileName));
+            }
 
-	    } catch (Exception e) {
-	        // Handle unexpected errors
-	        return new ResponseEntity<>(
-	            Map.of(
-	                "status", HttpStatus.INTERNAL_SERVER_ERROR.value(),
-	                "message", "An unexpected error occurred: " + e.getMessage()
-	            ),
-	            HttpStatus.INTERNAL_SERVER_ERROR
-	        );
-	    }
-	}
-	
-	@PutMapping("/events/{id}")
-	@PreAuthorize("hasRole('ADMIN')")
-	public ResponseEntity<?> updateEvent(@PathVariable long id, @RequestBody Events events) {
-	    try {
-	        // 1. Validate data
-	        String validationError = validateEvent(events);
-	        if (validationError != null) {
-	            return new ResponseEntity<>(
-	                Map.of(
-	                    "status", HttpStatus.BAD_REQUEST.value(),
-	                    "message", validationError
-	                ),
-	                HttpStatus.BAD_REQUEST
-	            );
-	        }
-
-	        // 2. Check if event exists
-	        Optional<Events> existingEvent = eventService.getEventById(id);
-	        if (existingEvent.isEmpty()) {
-	            return new ResponseEntity<>(
-	                Map.of(
-	                    "status", HttpStatus.NOT_FOUND.value(),
-	                    "message", "Event not found"
-	                ),
-	                HttpStatus.NOT_FOUND
-	            );
-	        }
-
-	        // 3. Update the event
-	        events.setId(id); // Set the ID to ensure it updates the correct event
-	        boolean status = eventService.updateEvent(events);
-
-	        if (status) {
-	            return new ResponseEntity<>(
-	                Map.of(
-	                    "status", HttpStatus.OK.value(),
-	                    "message", "Event Updated Successfully"
-	                ),
-	                HttpStatus.OK
-	            );
-	        }
-
-	        // 4. Handle update failure
-	        return new ResponseEntity<>(
-	            Map.of(
-	                "status", HttpStatus.CONFLICT.value(),
-	                "message", "Error in Updating Event. Check Data"
-	            ),
-	            HttpStatus.CONFLICT
-	        );
-
-	    } catch (Exception e) {
-	        // Handle unexpected errors
-	        return new ResponseEntity<>(
-	            Map.of(
-	                "status", HttpStatus.INTERNAL_SERVER_ERROR.value(),
-	                "message", "An unexpected error occurred: " + e.getMessage()
-	            ),
-	            HttpStatus.INTERNAL_SERVER_ERROR
-	        );
-	    }
-	}
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("status", HttpStatus.CONFLICT.value(), "message", "Error in Creating Event"));
+        } catch (IOException e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("status", HttpStatus.INTERNAL_SERVER_ERROR.value(), "message", "File upload failed: " + e.getMessage()));
+        }
+    }
 
 
-	 @DeleteMapping("/{id}")
-	 @PreAuthorize("hasRole('ADMIN')")
-	    public ResponseEntity<?> deleteEvent(@PathVariable long id) {
-	        try {
-	            // Assuming eventService.deleteEvent returns a boolean indicating success
-	            boolean isDeleted = eventService.deleteEvent(id);
+    // Update Event (Admin Only)
+    @PutMapping("/events/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> updateEvent(@PathVariable long id, @RequestBody Events events) {
+        try {
+            String validationError = validateEvent(events);
+            if (validationError != null) {
+                return ResponseEntity.badRequest().body(Map.of("status", HttpStatus.BAD_REQUEST.value(), "message", validationError));
+            }
 
-	            if (isDeleted) {
-	                return new ResponseEntity<>(
-	                    Map.of(
-	                        "status", HttpStatus.OK.value(),
-	                        "message", "Event Deleted Successfully"
-	                    ),
-	                    HttpStatus.OK
-	                );
-	            } else {
-	                return new ResponseEntity<>(
-	                    Map.of(
-	                        "status", HttpStatus.NOT_FOUND.value(),
-	                        "message", "Event Not Found"
-	                    ),
-	                    HttpStatus.NOT_FOUND
-	                );
-	            }
-	        } catch (Exception e) {
-	            // Handle any unexpected errors
-	            return new ResponseEntity<>(
-	                Map.of(
-	                    "status", HttpStatus.INTERNAL_SERVER_ERROR.value(),
-	                    "message", "An unexpected error occurred: " + e.getMessage()
-	                ),
-	                HttpStatus.INTERNAL_SERVER_ERROR
-	            );
-	        }
-	    }
-	 
-	 
-	 
-	 
-	 //event Register 
-	 
-	 @PostMapping("/eventRegister")
-	 @PreAuthorize("hasRole('ADMIN')")
-	 public ResponseEntity<?> eventRegister(@RequestBody EventRegister eventDto) {
-	     // Validate the event registration data
-	     String validationMessage = validateEventRegister(eventDto);
-	     if (validationMessage != null) {
-	         return ResponseEntity.badRequest().body(
-	             Map.of("status", HttpStatus.BAD_REQUEST.value(), "message", validationMessage)
-	         );
-	     }
+            Optional<Events> existingEvent = eventService.getEventById(id);
+            if (existingEvent.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("status", HttpStatus.NOT_FOUND.value(), "message", "Event not found"));
+            }
 
-	     try {
-	         // Check if student is already registered for the event
-	         boolean status = eventService.checkEventStudent(eventDto.getEventId(), eventDto.getStudentId());
+            events.setId(id);
+            boolean status = eventService.updateEvent(events);
+            if (status) {
+                return ResponseEntity.ok(Map.of("status", HttpStatus.OK.value(), "message", "Event Updated Successfully"));
+            }
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("status", HttpStatus.CONFLICT.value(), "message", "Error in Updating Event"));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("status", HttpStatus.INTERNAL_SERVER_ERROR.value(), "message", "An unexpected error occurred: " + e.getMessage()));
+        }
+    }
 
-	         if (status) {
-	             return ResponseEntity.status(HttpStatus.CONFLICT).body(
-	                 Map.of("status", HttpStatus.CONFLICT.value(), "message", "User already registered for this event")
-	             );
-	         }
-	         
-	         status=eventService.checkTid(eventDto.getTransactionId());
-	 		System.out.println(status);
+    // Delete Event (Admin Only)
+    @DeleteMapping("/events/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> deleteEvent(@PathVariable long id) {
+        try {
+            boolean isDeleted = eventService.deleteEvent(id);
+            if (isDeleted) {
+                return ResponseEntity.ok(Map.of("status", HttpStatus.OK.value(), "message", "Event Deleted Successfully"));
+            }
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("status", HttpStatus.NOT_FOUND.value(), "message", "Event Not Found"));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("status", HttpStatus.INTERNAL_SERVER_ERROR.value(), "message", "An unexpected error occurred: " + e.getMessage()));
+        }
+    }
 
-	         if(!status)
-	         {
-	        	 return ResponseEntity.status(HttpStatus.CONFLICT).body(
-		                 Map.of("status", HttpStatus.CONFLICT.value(), "message", "Transaction already exists")
-		             );
-	         }
-	         
-	         
-//	         System.out.println(eventDto);
-	         
-	         // Attempt to register the event
-	         boolean inserted = eventService.registerEvent(eventDto);
-	         
-	         System.out.println(inserted);
+    // Event Registration
+    @PostMapping("/eventRegister")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<?> eventRegister(@RequestBody EventRegister eventDto) {
+        String validationMessage = validateEventRegister(eventDto);
+        if (validationMessage != null) {
+            return ResponseEntity.badRequest().body(Map.of("status", HttpStatus.BAD_REQUEST.value(), "message", validationMessage));
+        }
 
-	         if (!inserted) {
-	             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
-	                 Map.of("status", HttpStatus.INTERNAL_SERVER_ERROR.value(), "message", "Failed to register event")
-	             );
-	         }
+        try {
+            boolean alreadyRegistered = eventService.checkEventStudent(eventDto.getEventId(), eventDto.getStudentId());
+            if (alreadyRegistered) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("status", HttpStatus.CONFLICT.value(), "message", "User already registered"));
+            }
 
-	         // Successfully registered
-	         return ResponseEntity.ok(
-	             Map.of("status", HttpStatus.OK.value(), "message", "Event registered successfully!")
-	         );
+            boolean transactionExists = eventService.checkTid(eventDto.getTransactionId());
+            if (!transactionExists) {
+                return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("status", HttpStatus.CONFLICT.value(), "message", "Transaction already exists"));
+            }
 
-	     } catch (DataIntegrityViolationException e) {
-	         return ResponseEntity.status(HttpStatus.CONFLICT).body(
-	             Map.of("status", HttpStatus.CONFLICT.value(), "message", "Duplicate entry or constraint violation")
-	         );
-	     } catch (Exception e) {
-	         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
-	             Map.of("status", HttpStatus.INTERNAL_SERVER_ERROR.value(), "message", "An error occurred: " + e.getMessage())
-	         );
-	     }
-	 }
+            boolean inserted = eventService.registerEvent(eventDto);
+            if (!inserted) {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("status", HttpStatus.INTERNAL_SERVER_ERROR.value(), "message", "Failed to register event"));
+            }
 
-	 // Helper method to validate event registration data
-	 private String validateEventRegister(EventRegister eventRegister) 
-	 {
-	     if (eventRegister.getEventId() <= 0) {
-	         return "Valid Event ID is required";
-	     }
-	     if (eventRegister.getStudentId() <= 0) {
-	         return "Valid Student ID is required";
-	     }
-	     
-	     if (eventRegister.getTransactionId()==null) {
-	         return "Valid Transaction Id is required";
-	     }
-	     return null; // Validation passed
-	 }
+            return ResponseEntity.ok(Map.of("status", HttpStatus.OK.value(), "message", "Event registered successfully!"));
+        } catch (DataIntegrityViolationException e) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("status", HttpStatus.CONFLICT.value(), "message", "Duplicate entry or constraint violation"));
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("status", HttpStatus.INTERNAL_SERVER_ERROR.value(), "message", "An error occurred: " + e.getMessage()));
+        }
+    }
 
-	
+    // Helper method to validate event data
+    private String validateEvent(Events event) {
+        if (event.getEventName() == null || event.getEventName().isEmpty()) return "Event name is required";
+        if (event.getEndDate() == null) return "Event date is required";
+        if (event.getDescription() == null || event.getDescription().isEmpty()) return "Event location is required";
+        return null;
+    }
 
-	
-
-	// Using Helper method for validation of events data
-	private String validateEvent(Events events) {
-	    if (events.getEventName() == null || events.getEventName().isEmpty()) {
-	        return "Event Name is required";
-	    }
-	    if (events.getImageName() == null || events.getImageName().isEmpty()) {
-	        return "Image Name is required";
-	    }
-	    if (events.getStartDate() == null || events.getStartDate().isEmpty()) {
-	        return "Start Date is required";
-	    }
-	    if (events.getEndDate() == null || events.getEndDate().isEmpty()) {
-	        return "End Date is required";
-	    }
-	    if (events.getDescription() == null || events.getDescription().isEmpty()) {
-	        return "Description is required";
-	    }
-	    return null; // Validation passed
-	}
-
+    // Helper method to validate event registration
+    private String validateEventRegister(EventRegister eventRegister) {
+        if (eventRegister.getEventId() <= 0) return "Invalid event ID";
+        if (eventRegister.getStudentId() <= 0) return "Invalid student ID";
+        if (eventRegister.getTransactionId() == null || eventRegister.getTransactionId().isEmpty()) return "Transaction ID is required";
+        return null;
+    }
 }
