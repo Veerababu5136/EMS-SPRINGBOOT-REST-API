@@ -17,7 +17,7 @@ public class AuthorizationController
 	public ResponseEntity<?> checking()
 	{
 		return ResponseEntity.ok(
-	             Map.of("status", HttpStatus.OK.value(), "message", "Authorized")
+	             Map.of("status", HttpStatus.OK.value(), "message", "Authorizedd")
 	         );
 		
 	}
