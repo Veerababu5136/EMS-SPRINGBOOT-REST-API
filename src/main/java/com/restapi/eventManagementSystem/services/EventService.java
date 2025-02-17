@@ -14,7 +14,6 @@ public interface EventService {
 	
 	boolean insertEvent(Events events);
 
-	boolean updateEvent(Events events);
 
 	boolean deleteEvent(long id);
 	
@@ -24,5 +23,8 @@ public interface EventService {
 	boolean checkTid(String string);
 	
 	boolean registerEvent(EventRegister eventRegister);
+	
+	 Events getEventById(Long eventId);
+	    boolean updateEvent(Events event);
 
 }

@@ -116,49 +116,109 @@ public class EventsController {
     }
 
 
-
-    // Update Event (Admin Only)
-    @PutMapping("/events/{id}")
+    @PutMapping(value = "/events", consumes = "multipart/form-data")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<?> updateEvent(@PathVariable long id, @RequestBody Events events) {
+    public ResponseEntity<?> updateEvent(
+            @RequestParam("eventId") Long eventId,
+            @RequestParam("eventName") String eventName,
+            @RequestParam("startDate") String startDate,
+            @RequestParam("endDate") String endDate,
+            @RequestParam("description") String description,
+            @RequestParam(value = "file", required = false) MultipartFile file) {
+
         try {
-            String validationError = validateEvent(events);
-            if (validationError != null) {
-                return ResponseEntity.badRequest().body(Map.of("status", HttpStatus.BAD_REQUEST.value(), "message", validationError));
+            // Fetch existing event from the database
+            Events existingEvent = eventService.getEventById(eventId);
+            if (existingEvent == null) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(Map.of("status", HttpStatus.NOT_FOUND.value(), "message", "Event not found"));
             }
 
-            Optional<Events> existingEvent = eventService.getEventById(id);
-            if (existingEvent.isEmpty()) {
-                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("status", HttpStatus.NOT_FOUND.value(), "message", "Event not found"));
+            // Update event details
+            existingEvent.setEventName(eventName);
+            existingEvent.setStartDate(startDate);
+            existingEvent.setEndDate(endDate);
+            existingEvent.setDescription(description);
+           
+
+            // Handle file update
+            if (file != null && !file.isEmpty()) {
+                // Define upload directory
+                String uploadDir = "uploads/";
+                File directory = new File(uploadDir);
+                if (!directory.exists()) {
+                    directory.mkdirs();
+                }
+
+                // Delete old image if it exists
+                if (existingEvent.getImageName() != null) {
+                    File oldFile = new File(uploadDir + existingEvent.getImageName());
+                    if (oldFile.exists()) {
+                        oldFile.delete();
+                    }
+                }
+
+                // Generate new filename
+                String fileName = System.currentTimeMillis() + "_" + file.getOriginalFilename();
+                Path filePath = Paths.get(uploadDir, fileName);
+
+                // Save new image
+                Files.copy(file.getInputStream(), filePath, StandardCopyOption.REPLACE_EXISTING);
+
+                // Update image name in database
+                existingEvent.setImageName(fileName);
             }
 
-            events.setId(id);
-            boolean status = eventService.updateEvent(events);
+            // Update event in database
+            boolean status = eventService.updateEvent(existingEvent);
             if (status) {
-                return ResponseEntity.ok(Map.of("status", HttpStatus.OK.value(), "message", "Event Updated Successfully"));
+                String imageUrl = "/uploads/" + existingEvent.getImageName();
+                return ResponseEntity.ok(Map.of("status", HttpStatus.OK.value(), "message", "Event Updated Successfully", "image_url", imageUrl));
             }
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("status", HttpStatus.CONFLICT.value(), "message", "Error in Updating Event"));
-        } catch (Exception e) {
+
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("status", HttpStatus.CONFLICT.value(), "message", "Error in Updating Event"));
+        } catch (IOException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("status", HttpStatus.INTERNAL_SERVER_ERROR.value(), "message", "An unexpected error occurred: " + e.getMessage()));
+                    .body(Map.of("status", HttpStatus.INTERNAL_SERVER_ERROR.value(), "message", "File update failed: " + e.getMessage()));
         }
     }
 
-    // Delete Event (Admin Only)
-    @DeleteMapping("/events/{id}")
+
+    @DeleteMapping("/events/{eventId}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<?> deleteEvent(@PathVariable long id) {
+    public ResponseEntity<?> deleteEvent(@PathVariable Long eventId) {
         try {
-            boolean isDeleted = eventService.deleteEvent(id);
-            if (isDeleted) {
+            // Fetch the existing event
+            Events existingEvent = eventService.getEventById(eventId);
+            if (existingEvent == null) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                        .body(Map.of("status", HttpStatus.NOT_FOUND.value(), "message", "Event not found"));
+            }
+
+            // Delete the image file from uploads folder if it exists
+            if (existingEvent.getImageName() != null) {
+                String uploadDir = "uploads/";
+                File imageFile = new File(uploadDir + existingEvent.getImageName());
+                if (imageFile.exists()) {
+                    imageFile.delete();
+                }
+            }
+
+            // Delete the event from the database
+            boolean status = eventService.deleteEvent(eventId);
+            if (status) {
                 return ResponseEntity.ok(Map.of("status", HttpStatus.OK.value(), "message", "Event Deleted Successfully"));
             }
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("status", HttpStatus.NOT_FOUND.value(), "message", "Event Not Found"));
+
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("status", HttpStatus.CONFLICT.value(), "message", "Error in Deleting Event"));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body(Map.of("status", HttpStatus.INTERNAL_SERVER_ERROR.value(), "message", "An unexpected error occurred: " + e.getMessage()));
+                    .body(Map.of("status", HttpStatus.INTERNAL_SERVER_ERROR.value(), "message", "Error: " + e.getMessage()));
         }
     }
+
 
     // Event Registration
     @PostMapping("/eventRegister")

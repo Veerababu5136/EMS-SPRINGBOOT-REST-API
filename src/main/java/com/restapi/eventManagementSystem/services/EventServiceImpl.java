@@ -49,17 +49,19 @@ public class EventServiceImpl implements EventService {
 	}
 
 	@Override
-	public boolean updateEvent(Events events) {
-		
-		Events updated=eventRepository.save(events);
-		
-		if(updated==null)
-		{
-			return false;
-		}
-		// TODO Auto-generated method stub
-		return true;
-	}
+    public Events getEventById(Long eventId) {
+        return eventRepository.findById(eventId).orElse(null);
+    }
+
+    @Override
+    public boolean updateEvent(Events event) {
+        try {
+            eventRepository.save(event);
+            return true;
+        } catch (Exception e) {
+            return false;
+        }
+    }
 
 	@Override
 	public boolean deleteEvent(long id) {
