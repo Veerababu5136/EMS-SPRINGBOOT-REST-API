@@ -23,6 +23,16 @@ public class Events {
 	private String endDate;
 	
 	private String description;
+	
+	private String applyLink;
+
+	public String getApplyLink() {
+		return applyLink;
+	}
+
+	public void setApplyLink(String applyLink) {
+		this.applyLink = applyLink;
+	}
 
 	public long getId() {
 		return id;
@@ -75,8 +85,9 @@ public class Events {
 	@Override
 	public String toString() {
 		return "Events [id=" + id + ", eventName=" + eventName + ", imageName=" + imageName + ", startDate=" + startDate
-				+ ", endDate=" + endDate + ", description=" + description + "]";
+				+ ", endDate=" + endDate + ", description=" + description + ", applyLink=" + applyLink + "]";
 	}
+
 	
 	
 	

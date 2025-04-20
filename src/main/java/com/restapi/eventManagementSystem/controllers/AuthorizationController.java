@@ -22,4 +22,15 @@ public class AuthorizationController
 		
 	}
 
+	
+	@GetMapping("/api/user")
+	@PreAuthorize("hasRole('USER')")
+	public ResponseEntity<?> check()
+	{
+		return ResponseEntity.ok(
+	             Map.of("status", HttpStatus.OK.value(), "message", "Authorizedd")
+	         );
+		
+	}
+
 }

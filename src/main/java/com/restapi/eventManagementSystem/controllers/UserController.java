@@ -182,6 +182,14 @@ public class UserController
 		}
 		
 	}
+	
+	
+	@PostMapping("/token")
+	public int getId(String token)
+	{
+		System.out.println(token+"kl");
+		return 0;
+	}
 
 	 @GetMapping("/checking/{name}")
 	    public String check(@PathVariable String name) 

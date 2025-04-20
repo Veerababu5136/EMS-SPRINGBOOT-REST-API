@@ -6,6 +6,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.time.LocalDate;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -61,6 +63,7 @@ public class EventsController {
             @RequestParam("startDate") String startDate,
             @RequestParam("endDate") String endDate,
             @RequestParam("description") String description,
+            @RequestParam("applyLink") String applyLink,
             @RequestParam("file") MultipartFile file) {
 
         try {
@@ -70,16 +73,12 @@ public class EventsController {
             events.setStartDate(startDate);
             events.setEndDate(endDate);
             events.setDescription(description);
+            events.setApplyLink(applyLink);
 
             // Validate event data
-            String validationError = validateEvent(events);
+            String validationError = validateEvent(eventName, startDate, endDate, description, applyLink, file);
             if (validationError != null) {
                 return ResponseEntity.badRequest().body(Map.of("status", HttpStatus.BAD_REQUEST.value(), "message", validationError));
-            }
-
-            // Handle file upload
-            if (file.isEmpty()) {
-                return ResponseEntity.badRequest().body(Map.of("status", HttpStatus.BAD_REQUEST.value(), "message", "Image file is required"));
             }
 
             // Define the upload directory (not inside `src/`)
@@ -108,13 +107,16 @@ public class EventsController {
                         .body(Map.of("status", HttpStatus.CREATED.value(), "message", "Event Added Successfully", "image_url", imageUrl));
             }
 
-            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("status", HttpStatus.CONFLICT.value(), "message", "Error in Creating Event"));
+            return ResponseEntity.status(HttpStatus.CONFLICT)
+                    .body(Map.of("status", HttpStatus.CONFLICT.value(), "message", "Error in Creating Event"));
+
         } catch (IOException e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
                     .body(Map.of("status", HttpStatus.INTERNAL_SERVER_ERROR.value(), "message", "File upload failed: " + e.getMessage()));
         }
     }
 
+  
 
     @PutMapping(value = "/events", consumes = "multipart/form-data")
     @PreAuthorize("hasRole('ADMIN')")
@@ -124,9 +126,16 @@ public class EventsController {
             @RequestParam("startDate") String startDate,
             @RequestParam("endDate") String endDate,
             @RequestParam("description") String description,
+            @RequestParam("applyLink") String applyLink,
             @RequestParam(value = "file", required = false) MultipartFile file) {
 
         try {
+        	
+        	 // Validate event data
+            String validationError = validateEvent(eventName, startDate, endDate, description, applyLink, file);
+            if (validationError != null) {
+                return ResponseEntity.badRequest().body(Map.of("status", HttpStatus.BAD_REQUEST.value(), "message", validationError));
+            }
             // Fetch existing event from the database
             Events existingEvent = eventService.getEventById(eventId);
             if (existingEvent == null) {
@@ -139,6 +148,7 @@ public class EventsController {
             existingEvent.setStartDate(startDate);
             existingEvent.setEndDate(endDate);
             existingEvent.setDescription(description);
+            existingEvent.setApplyLink(applyLink);
            
 
             // Handle file update
@@ -222,7 +232,6 @@ public class EventsController {
 
     // Event Registration
     @PostMapping("/eventRegister")
-    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<?> eventRegister(@RequestBody EventRegister eventDto) {
         String validationMessage = validateEventRegister(eventDto);
         if (validationMessage != null) {
@@ -255,11 +264,39 @@ public class EventsController {
     }
 
     // Helper method to validate event data
-    private String validateEvent(Events event) {
-        if (event.getEventName() == null || event.getEventName().isEmpty()) return "Event name is required";
-        if (event.getEndDate() == null) return "Event date is required";
-        if (event.getDescription() == null || event.getDescription().isEmpty()) return "Event location is required";
-        return null;
+    private String validateEvent(String eventName, String startDate, String endDate, String description, String applyLink, MultipartFile file) {
+        if (eventName == null || eventName.trim().isEmpty()) {
+            return "Event name is required";
+        }
+        if (startDate == null || startDate.trim().isEmpty()) {
+            return "Start date is required";
+        }
+        if (endDate == null || endDate.trim().isEmpty()) {
+            return "End date is required";
+        }
+        if (description == null || description.trim().isEmpty()) {
+            return "Event description is required";
+        }
+        if (applyLink == null || applyLink.trim().isEmpty()) {
+            return "Apply link is required";
+        }
+        if (file == null || file.isEmpty()) {
+            return "Image file is required";
+        }
+
+        // Validate date format and logic
+        try {
+            LocalDate start = LocalDate.parse(startDate);
+            LocalDate end = LocalDate.parse(endDate);
+
+            if (start.isAfter(end)) {
+                return "Start date must be before end date";
+            }
+        } catch (DateTimeParseException e) {
+            return "Invalid date format. Use YYYY-MM-DD";
+        }
+
+        return null; // No validation errors
     }
 
     // Helper method to validate event registration
